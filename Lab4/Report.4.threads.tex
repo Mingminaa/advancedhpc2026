@@ -1,0 +1,104 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subcaption}
+
+\title{Labwork 4 - Threads}
+\author{Ho Thanh Thuy Tien}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Implementation}
+In this labwork, I will continue the grayscale image conversion implemented in Labwork 3. The objective of this labwork is to improve the CUDA implementation by using 2D thread blocks instead of 1D.\\ 
+
+Because this implementation builds upon the 1D version of the previous lab work, the code is largely identical except for a few minor changes. Following the instruction, first I loaded the image using \texttt{matplotlib.pyplot.imread()} function.
+
+\begin{verbatim}
+img = plt.imread("/content/dog.jpg")
+plt.imshow(img)
+\end{verbatim}
+
+For the CUDA implementation, the image is flattened into a sequence
+of RGB pixels using:
+
+\begin{verbatim}
+flatSrc = image.reshape(pixelCount, 3)
+\end{verbatim}
+
+
+\textbf{CPU Implementation}
+For each pixel, the grayscale value is calculated as the average of the red, green, and blue components:
+
+\begin{equation}
+    G = \frac{R + G + B}{3}
+\end{equation}
+
+The resulting grayscale value is then assigned to the three channels
+of the output pixel and I used \texttt{for} loop to process the pixels sequentially.\\
+
+\textbf{GPU Implementation} In Labwork 3, the image was represented as a one-dimensional array of pixels. Each CUDA thread was responsible for processing one pixel.\\
+
+The global thread index was calculated using:
+
+\begin{verbatim}
+tidx = cuda.threadIdx.x + cuda.blockIdx.x * cuda.blockDim.x
+g = np.uint8((src[tidx, 0] + src[tidx, 1] + src[tidx, 2]) / 3)
+dst[tidx, 0] = dst[tidx, 1] = dst[tidx, 2] = g
+\end{verbatim}
+
+Turning to the 2D GPU implementation, the main improvement in this labwork is changing the CUDA execution. An image naturally has two spatial dimensions which are width and height. Therefore, using a 2D CUDA grid and 2D blocks provides a more direct mapping between CUDA threads and image pixels.\\
+
+Instead of assigning pixels to a single linear index, each thread is assigned
+an $(x,y)$ position.\\
+
+The global coordinates are calculated as:
+
+
+\begin{verbatim}
+tidx = cuda.threadIdx.x + cuda.blockIdx.x * cuda.blockDim.x
+tidy = cuda.threadIdx.y + cuda.blockIdx.y * cuda.blockDim.y
+
+g = np.uint8((src[tidy, tidx, 0] + src[tidy, tidx, 1] + src[tidy, tidx, 2]) / 3)
+dst[tidy, tidx, 0] = dst[tidy, tidx, 1] = dst[tidy, tidx, 2] = g
+\end{verbatim}
+
+And here is the result with gridSize = (8, 8) and blockSize = (32, 32):
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\textwidth]{gpu_2d.png}
+\caption{Gray picture from 2D GPU.}
+\label{gray}
+\end{figure}
+
+\section{Experiment Result}
+\textbf{Block Size}
+Here, I will test and analyze with different 2D block size values which are
+(8,4),\ (16,4),\ (8,16),\ (16,16),\ (32,16),\ (32,32). According to the Figure \ref{fig:cuda_performance}, as the block size increases, execution time drops sharply while speedup increasing dramatically, peaking at the 8x16 configuration with an impressive speedup of 1,986.97x. The experiments demonstrate that block size affects GPU performance. However, a larger block does not necessarily provide better performance. The optimal configuration depends on the GPU hardware and the workload.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{block.png}
+        \caption{2D Block Size vs GPU Execution Time}
+        \label{fig:exec_time}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{speed.png}
+        \caption{2D CUDA Block Size vs Speedup}
+        \label{fig:speedup}
+    \end{subfigure}
+    \caption{Performance comparison across various 2D CUDA block configurations.}
+    \label{fig:cuda_performance}
+\end{figure}
+
+\textbf{Speed Up}
+Although the 1D implementation ran slightly faster than the 2D version ($0.000231$ compared with $0.000292$ seconds), the difference is so tiny that it mostly comes down to measurement noise and timing variations. Therefore, both method perform well for current single-run results.
+
+
+\end{document}

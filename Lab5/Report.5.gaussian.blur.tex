@@ -1,0 +1,88 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{amsmath}
+
+\title{Labwork 5 - Gaussian Blur Convolution}
+\author{Ho Thanh Thuy Tien}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Implementation}
+For this labwork, I extended the grayscaling kernel from Labwork 4 to implement a $7\times7$ Gaussian blur convolution using CUDA. The performance of the convolution was then evaluated with and without shared memory by measuring the execution time and calculating the resulting speedup.\\ 
+
+
+Gaussian blur is an image-processing operation that smooths an image by replacing each pixel with a weighted combination of its neighboring pixels.
+The filter 7x7 that I used in this lab is:
+\[ G = \begin{bmatrix} 0 & 0 & 1 & 2 & 1 & 0 & 0 \\ 0 & 3 & 13 & 22 & 13 & 3 & 0 \\ 1 & 13 & 59 & 97 & 59 & 13 & 1 \\ 2 & 22 & 97 & 159 & 97 & 22 & 2 \\ 1 & 13 & 59 & 97 & 59 & 13 & 1 \\ 0 & 3 & 13 & 22 & 13 & 3 & 0 \\ 0 & 0 & 1 & 2 & 1 & 0 & 0 \end{bmatrix}. \]
+
+And then, the filter is normalized by dividing every coefficient by $1003$ to make the sum of all filter coefficients equal to $1$.\\
+
+
+\textbf{CPU Implementation}
+The Gaussian kernel follows a normal distribution. The two-dimensional Gaussian function is given by: \[ G(x,y) = \frac{1}{2\pi\sigma^2} \exp\left( -\frac{(x-\mu_x)^2+(y-\mu_y)^2}{2\sigma^2} \right), \]
+
+The CPU implementation processes the image sequentially. For each pixel, the algorithm examines the surrounding $7\times7$ neighborhood and applies the Gaussian filter to calculate the new pixel value. However, instead of calculating the Gaussian values during the execution of the program, I will use the $7\times7$ Gaussian kernel provided above.\\
+
+The first two loops iterate through the image: 
+\begin{verbatim} 
+for y in range(height): 
+    for x in range(width): 
+\end{verbatim} 
+Here, $(x,y)$ represents the position of the current pixel. The CPU processes these pixels sequentially. It starts from one pixel, calculates its blurred value, and then moves to the next pixel.\\
+
+For each pixel, the three RGB channels are processed: 
+\begin{verbatim} 
+for c in range(channels):
+\end{verbatim} 
+The convolution is therefore applied independently to the red, green, and blue components.\\
+
+The next two loops visit every position of the Gaussian kernel: \begin{verbatim} 
+for fy in range(-3, 4): for fx in range(-3, 4): 
+\end{verbatim}
+The values of \texttt{fx} and \texttt{fy} therefore represent the relative position of a neighboring pixel with respect to the current pixel. Thus, the algorithm uses the current pixel and its surrounding pixels to calculate the blurred value and it repeat until every pixel and every color channel has been processed.
+
+\textbf{GPU implementation} The image is processed using a two-dimensional CUDA grid. Each CUDA thread is responsible for calculating one output pixel.\\
+
+\textbf{Without Shared Memory} The first CUDA implementation accesses the Gaussian filter directly from global memory.\\
+
+The convolution process begins by determining the position of the current pixel and iterating through its $7\times7$ neighborhood. For each neighboring pixel, the coordinates are calculated, and the corresponding image pixel and Gaussian coefficient are read. These two values are then multiplied together, and the result is accumulated to obtain the final convolution value. Finally, the calculated value is written to the output image.
+
+\begin{verbatim}
+for fy in range(-3, 4):
+    for fx in range(-3, 4):
+
+        nx = tidx + fx
+        ny = tidy + fy
+
+        if nx >= 0 and nx < width and ny >= 0 and ny < height:
+
+            result += (
+                float(src[ny, nx, c])
+                * filter[fy + 3, fx + 3]
+            )
+\end{verbatim}
+
+\textbf{With Shared Memory}
+The shared-memory version first allocates a shared-memory \texttt{tile}, where the threads cooperatively copy the Gaussian filter. After synchronizing all threads to ensure the data is ready, the shared-memory filter is used for the convolution process. Finally, the computed result is written back to global memory.
+
+\section{Experiment Result}
+\textbf{Block Size}
+Here, I will test and analyze with different 2D block size values which are (8,4),\ (16,4),\ (8,16),\ (16,16),\ (32,16),\ (32,32). According to Figure \ref{fig:cuda_performance}, block size has a significant effect on GPU performance. The execution time decreases and speedup increases as the block size changes from $8\times4$ to $8\times16$, where the shared memory implementation achieves its highest speedup of over 9,530x. However, increasing the block size further does not always improve performance, as the execution time increases again at $32\times32$. The results also show that shared memory generally provides better performance than the without shared memory.
+
+\begin{figure}[H]
+    \includegraphics[width=0.45\linewidth]{block_gaus.png}
+    \hspace{0.25cm}
+    \includegraphics[width=0.45\linewidth]{speed_gaus.png}
+    \caption{Performance comparison across various 2D CUDA block configurations with and without shared memory.}
+    \label{fig:cuda_performance}
+\end{figure}
+
+\textbf{Speed Up}
+When comparing the two implementations, the shared memory version generally has lower execution times and higher speedups for most block sizes. The best performance is achieved with the $8\times16$ block size. After this point, the performance gradually decreases as the block size increases toward $32\times32$.
+
+\end{document}

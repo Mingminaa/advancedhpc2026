@@ -1,0 +1,111 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage{amsmath}
+
+\title{Labwork 6 - Map}
+\author{Ho Thanh Thuy Tien}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Implementation}
+For this labwork, I will implement several basic image-processing operations on the GPU using CUDA through Numba which are brightness control, grayscale image binarization and blending two images.\\ 
+
+\noindent
+\textbf{Grayscale Image Binarization}
+The original input image is an RGB image. The first step is to convert it to grayscale. For every pixel, the CUDA kernel reads the red, green, and blue channels and computes their average:
+
+\begin{equation}
+G(x,y) =
+\frac{R(x,y)+G(x,y)+B(x,y)}{3}.
+\end{equation}
+
+\noindent
+After obtaining the grayscale image, I apply a threshold with value equal to 128. Here, each grayscale pixel is compared with this threshold. If the pixel value is smaller than 128, the output becomes 0. Otherwise, it becomes 1. Therefore, we have a result like this:
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.45\linewidth]{bin.png}
+    \caption{GPU binarization}
+    \label{fig:bin}
+\end{figure}
+
+\noindent
+\textbf{Brightness Control}
+Brightness control is implemented by adding a constant value to every color channel of every pixel. In this case, I choose brightness with value equal to 60. For each color channel, the original pixel value is added to the selected brightness adjustment (value). Since an 8-bit image must have pixel values within the range [0, 255], the resulting value is clipped to this range before being stored in the output image:
+\begin{verbatim}
+for c in range(src.shape[2]):
+    v = int(src[tidy, tidx, c]) + value
+    if v < 0:
+      v = 0
+    elif v > 255:
+      v = 255
+    dst[tidy, tidx, c] = v
+\end{verbatim}
+
+\noindent
+I tested both positive and negative brightness values and here is the result:
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{bright.png}
+    \caption{GPU brightness control}
+    \label{fig:bri}
+\end{figure}
+
+\noindent
+\textbf{Blending Two Images}
+For image blending, a second image is loaded with PIL and resized to the same width and height as the first image. The second image is shown below:
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.35\linewidth]{puppy.jpg}
+    \caption{Second image}
+    \label{fig:pup}
+\end{figure}
+
+\noindent
+After that, both images are copied to GPU memory. The blending operation follows the formula presented in the slides, where the coefficient c determines the weight of each input image:
+
+\begin{equation}
+Q(x,y) = c \times \Phi_1(x,y) + (1-c) \times \Phi_2(x,y)
+\end{equation}
+
+\noindent
+With a coefficient of $0.5$, both images contribute equally to the result. I also tested coefficients $0.25$, $0.50$, and $0.75$ as shown in Figure \ref{fig:ble}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{blend.png}
+    \caption{GPU blend two images}
+    \label{fig:ble}
+\end{figure}
+
+\noindent
+I also converted both input images to grayscale and blended the grayscale results using the same blending kernel. The result is shown in the Figure \ref{fig:gble}
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{gblend.png}
+    \caption{GPU grayscale blend}
+    \label{fig:gble}
+\end{figure}
+
+
+\section{Experiment Result}
+To study the effect of CUDA block configuration, I tested the following two-dimensional block sizes: (8,4),\ (16,4),\ (8,16),\ (16,16),\ (32,16),\ (32,32).\\
+
+\noindent
+The experiment demonstrates that CUDA execution time varies depending on the 2D block configuration, as smaller blocks can create more blocks and increase scheduling overhead. In this experiment, brightness achieved its lowest time of approximately 0.000128 seconds with a 32×32 block, while blending performed best at approximately 0.000278 seconds with a 32×16 block. Grayscale binarization achieved its lowest time of approximately 0.000210 seconds using a 16×16 block. Therefore, no single block size was optimal for all kernels. Performance depends on the computation, memory access patterns, scheduling, and measurement variation, so testing multiple configurations is important when optimizing CUDA programs.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{res.png}
+    \caption{GPU Execution Time vs Block Size for Brightness, Blending, and Grayscale Binarization}
+    \label{fig:result}
+\end{figure}
+
+
+\end{document}
